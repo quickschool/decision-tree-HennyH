@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Troubleshooter</title>
+    <style>
+        #choices > button {
+            margin: 0.5em;
+            padding: 0.5em;
+        }
+    </style>
+</head>
+<body>
+    <h1>Troubleshooter</h1>
+    <form id="scenario-form">
+        <input type="text" name="scenario-filename" id="scenario-filename">
+        <input type="submit" value="Load Scenario">
+    </form>
+    <!-- choices will be rendered out here -->
+    <div id="choices"></div>
+    <script type="text/javascript">
+
+    /*
+     * The `render` function is responsible for displaying a UI
+     * for the `node` of the given `scenarioFilename` passed in. The passed in node should be an
+     * object of the following form:
+     * 
+     * {
+     *     "node_id": "...",
+     *     "prompt": "...",
+     *     "choices": [
+     *         {
+     *             "text": "...",
+     *             "next_node_id": "...",
+     *             "next_variables": {}
+     *         },
+     *         ...
+     *     ]
+     * }
+     * 
+     * It should display the prompt (`node.prompt`) and then create buttons (or something)
+     * for selecting one of the choices in `node.choices`. When a choice is clicked or whatever
+     * it should call `loadChoices` ASYNCHRONOUSLY (look at the async/await stuff - if you don't
+     * get it ask me!) and then call `render` again on the node we got from the API.
+     */
+    function render(scenarioFilename, node) {
+        const choicesElement = document.getElementById("choices");
+        choicesElement.textContent = '';
+        
+        /* If they gave us an invalid node then we will just leave the screen empty? */
+        if (node === null) return;
+
+        const promptElement = document.createElement("h2");
+        promptElement.textContent = node.prompt;
+        choicesElement.appendChild(promptElement)
+
+        for (const choice of node.choices) {
+            const choiceText = document.createElement("button");
+            choiceText.textContent = choice.text;
+            /* the event listener's callback (the function we passed in) doesn't get called immedietly,
+             * it will get called when we click the button.
+             */
+            choiceText.addEventListener("click", async () => {
+                const nextNode = await fetchNode(scenarioFilename, choice.next_node_id, choice.next_variables);
+                render(scenarioFilename, nextNode);
+            });
+            choicesElement.appendChild(choiceText)
+        }
+    }
+
+    async function handleScenrioFormSubmitted(submitEvent) {
+        /* https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/submit_event */
+        submitEvent.preventDefault();
+        submitEvent.stopPropagation();
+        const scenarioFilenameElement = document.getElementById("scenario-filename");
+        scenarioFilename = scenarioFilenameElement.value;
+        const rootNode = await fetchNode(scenarioFilename, null, {});
+        render(scenarioFilename, rootNode);
+    } 
+
+    const scnerioForm = document.getElementById("scenario-form");
+    scnerioForm.addEventListener("submit", handleScenrioFormSubmitted);
+
+        
+    /*
+     * Fetch the data to describe a node by it's ID in a given scenario file.
+     * This will invoke an endpoint defined in `api.py` and then return the data
+     * in the following format:
+     * 
+     * {
+     *     "node_id": "...",
+     *     "prompt": "...",
+     *     "choices": [
+     *         {
+     *             "text": "...",
+     *             "next_node_id": "...",
+     *             "next_variables": {}
+     *         },
+     *         ...
+     *     ]
+     * }
+     * 
+     * If node_id is `null` or `undefined` then we will have the ROOT node
+     * of the scenario returned to us.
+     */
+    async function fetchNode(scenarioFilename, node_id, variables) {
+        const response = await fetch("/scenarios/nodes", {
+            method: "POST",
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                "scenario_filename": scenarioFilename,
+                "node_id": node_id,
+                "variables": variables
+            })
+        });
+        return await response.json();
+    }
+
+    </script>
+</body>
+</html>
